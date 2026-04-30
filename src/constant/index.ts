@@ -4,6 +4,8 @@ import {
   getChainList,
   getMainnetChainList,
 } from '@/utils/chain';
+import { M_ETH_TOKEN } from './tokens/M_ETH';
+import { POOL_A1, POOL_A2, POOL_B1, POOL_B2, ALL_M_ETH_POOLS } from './miningPools/M_ETH';
 import { CHAINS, CHAINS_ENUM, Chain } from '@debank/common';
 import { Level } from '@rabby-wallet/rabby-security-engine/dist/rules';
 import { DEX_ENUM, DEX_SUPPORT_CHAINS } from '@rabby-wallet/rabby-swap';
@@ -519,9 +521,9 @@ export const WALLETCONNECT_STATUS_MAP = {
 export const INTERNAL_REQUEST_ORIGIN = location.origin;
 
 export const INTERNAL_REQUEST_SESSION = {
-  name: 'Rabby',
+  name: 'MarisselleWallet',
   origin: INTERNAL_REQUEST_ORIGIN,
-  icon: RabbyChainLogo,
+  icon: MarisselleChainLogo,
 };
 
 export const INITIAL_OPENAPI_URL = 'https://api.rabby.io';
@@ -1695,6 +1697,15 @@ export const DBK_CHAIN_BRIDGE_CONTRACT =
   '0x28f1b9F457CB51E0af56dff1d11CD6CEdFfD1977';
 export const DBK_NFT_CONTRACT_ADDRESS =
   '0x633b7472E1641D59334886a7692107D6332B1ff0';
+// Address constants (direct)
+export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+export const DEAD_ADDRESS = '0x000000000000000000000000000000000000dEaD';
+
+// Token imports (from files)
+export { M_ETH_TOKEN };
+
+// Pool imports (from files)
+export { POOL_A1, POOL_A2, POOL_B1, POOL_B2, ALL_M_ETH_POOLS };
 
 export const SELF_HOST_SAFE_NETWORKS = [
   '1',

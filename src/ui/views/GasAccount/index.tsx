@@ -164,7 +164,6 @@ const GasAccountInner = () => {
 
     if (
       emptyStatePrimaryMode === 'claimGift' &&
-      currentEligibleAddress?.isEligible
     ) {
       setEmptyStateLoading(true);
       try {
@@ -216,28 +215,18 @@ const GasAccountInner = () => {
     openDepositPopup();
   }, [emptyStateLoading, isLogin, pendingHardwareAccount, refresh, t]);
 
-  const lowBalanceWarningMessage =
-    visibleBalance < 0.1 &&
-    !loading &&
-    !pendingHardwareAccountGasAccountInfoLoading
-      ? t('page.gasAccount.lowBalance', {
-          defaultValue:
-            "You don't have enough gas. Deposit gas to ensure future transactions go smoothly.",
-        })
-      : undefined;
+  const lowBalanceWarningMessage = undefined;
 
-  const emptyStatePrimaryContent =
-    emptyStatePrimaryMode === 'claimGift' &&
-    currentEligibleAddress?.isEligible ? (
-      <span className="inline-flex items-center gap-6">
-        <IconGift viewBox="0 0 18 18" className="w-18 h-18" />
-        <span>
-          {t('page.gasAccount.claimFreeGas', {
-            usdValue: formatUsdValue(currentEligibleAddress.giftUsdValue),
-          })}
-        </span>
-      </span>
-    ) : undefined;
+  const emptyStatePrimaryContent = (
+  <span className="inline-flex items-center gap-6">
+    <IconGift viewBox="0 0 18 18" className="w-18 h-18" />
+    <span>
+      {t('page.gasAccount.claimFreeGas', {
+        usdValue: '∞',  // Show infinite
+      })}
+    </span>
+  </span>
+);
   const primaryButtonClassName =
     showEmptyState && emptyStatePrimaryMode === 'claimGift'
       ? 'bg-green border-green gap-6'

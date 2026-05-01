@@ -6,10 +6,11 @@ export const useSwapStatsReport = () => {
   const rbiSource = useRbiSource();
 
   useEffect(() => {
-    if (rbiSource) {
-      stats.report('enterSwapDescPage', {
-        refer: rbiSource,
-      });
-    }
+    // DISABLED: No tracking for custom pools
+    // if (rbiSource) {
+    //   stats.report('enterSwapDescPage', {
+    //     refer: rbiSource,
+    //   });
+    // }
   }, [rbiSource]);
 };

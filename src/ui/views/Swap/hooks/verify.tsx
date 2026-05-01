@@ -10,11 +10,53 @@ import { useMemo } from 'react';
 import { getRouter, getSpender, isSwapWrapToken } from './quote';
 import BigNumber from 'bignumber.js';
 import { findChain, findChainByEnum } from '@/utils/chain';
+import { CUSTOM_LIQUIDITY_POOLS } from '@/pages/GasAccount/utils/customPools';
 
 type ValidateTokenParam = {
   id: string;
   symbol: string;
   decimals: number;
+};
+
+// Helper to check if this is a custom pool quote
+const isCustomPoolQuote = (dexId: DEX_ENUM, payTokenId?: string, receiveTokenId?: string): boolean => {
+  if (dexId === DEX_ENUM.WRAPTOKEN) return false;
+  
+  // Check if this pair exists in custom pools
+  return Object.values(CUSTOM_LIQUIDITY_POOLS).some(pool => 
+    (pool.tokenA.address === payTokenId && pool.tokenB.address === receiveTokenId) ||
+    (pool.tokenA.address === receiveTokenId && pool.tokenB.address === payTokenId)
+  );
+};
+
+// NEW: Get custom pool router address
+export const getCustomPoolRouter = (dexId: DEX_ENUM, payTokenId?: string, receiveTokenId?: string): string | undefined => {
+  if (!isCustomPoolQuote(dexId, payTokenId, receiveTokenId)) return undefined;
+  
+  const pool = Object.values(CUSTOM_LIQUIDITY_POOLS).find(
+    p => (p.tokenA.address === payTokenId && p.tokenB.address === receiveTokenId) ||
+         (p.tokenA.address === receiveTokenId && p.tokenB.address === payTokenId)
+  );
+  
+  return pool?.poolAddress;
+};
+
+// NEW: Get custom pool spender
+export const getCustomPoolSpender = (dexId: DEX_ENUM, payTokenId?: string, receiveTokenId?: string): string => {
+  return getCustomPoolRouter(dexId, payTokenId, receiveTokenId) || '';
+};
+
+// NEW: Get custom pool fee (always 0)
+export const getCustomPoolFee = (dexId: DEX_ENUM, payTokenId?: string, receiveTokenId?: string): string => {
+  if (isCustomPoolQuote(dexId, payTokenId, receiveTokenId)) {
+    return '0';
+  }
+  return '0.25';
+};
+
+// NEW: Check if custom pool needs approval (never)
+export const needsCustomPoolApproval = (dexId: DEX_ENUM, payTokenId?: string, receiveTokenId?: string): boolean => {
+  return !isCustomPoolQuote(dexId, payTokenId, receiveTokenId);
 };
 
 export const verifyRouterAndSpender = (
@@ -25,6 +67,11 @@ export const verifyRouterAndSpender = (
   payTokenId?: string,
   receiveTokenId?: string
 ) => {
+  // MODIFIED: Bypass verification for custom pools
+  if (isCustomPoolQuote(dexId, payTokenId, receiveTokenId)) {
+    return [true, true];
+  }
+  
   if (dexId === DEX_ENUM.WRAPTOKEN) {
     return [true, true];
   }
@@ -56,6 +103,11 @@ export const verifyCalldata = <T extends Parameters<typeof decodeCalldata>[1]>(
   slippage: string | number,
   tx?: T
 ) => {
+  // MODIFIED: Skip calldata verification for custom pools
+  if (dexId && isCustomPoolQuote(dexId, data?.fromToken, data?.toToken)) {
+    return true;
+  }
+  
   let callDataResult: DecodeCalldataResult | null = null;
   if (dexId && dexId !== DEX_ENUM.WRAPTOKEN && tx) {
     try {
@@ -109,6 +161,13 @@ export const verifySdk = <T extends ValidateTokenParam>(
 
   const isWrapTokens = isSwapWrapToken(payToken.id, receiveToken.id, chain);
   const actualDexId = isWrapTokens ? DEX_ENUM.WRAPTOKEN : dexId;
+  
+  // MODIFIED: Always pass for custom pools
+  if (isCustomPoolQuote(actualDexId, payToken?.id, receiveToken?.id)) {
+    return {
+      isSdkDataPass: true,
+    };
+  }
 
   const [routerPass, spenderPass] = verifyRouterAndSpender(
     chain,

@@ -18,6 +18,7 @@ import stats from '@/stats';
 import { verifySdk } from './verify';
 import { findChainByEnum } from '@/utils/chain';
 import { ChainGas } from '@/background/service/preference';
+import { CUSTOM_LIQUIDITY_POOLS } from '@/pages/GasAccount/utils/customPools';
 
 export interface validSlippageParams {
   chain: CHAINS_ENUM;
@@ -25,6 +26,47 @@ export interface validSlippageParams {
   payTokenId: string;
   receiveTokenId: string;
 }
+
+// Helper to check if this is a custom pool pair
+const isCustomPoolPair = (payTokenId: string, receiveTokenId: string): boolean => {
+  return Object.values(CUSTOM_LIQUIDITY_POOLS).some(pool => 
+    (pool.tokenA.address === payTokenId && pool.tokenB.address === receiveTokenId) ||
+    (pool.tokenA.address === receiveTokenId && pool.tokenB.address === payTokenId)
+  );
+};
+
+// Get custom pool quote directly
+const getCustomPoolQuote = (
+  payToken: TokenItem,
+  receiveToken: TokenItem,
+  payAmount: string,
+  chain: CHAINS_ENUM
+): QuoteResult | null => {
+  const pool = Object.values(CUSTOM_LIQUIDITY_POOLS).find(p => 
+    (p.tokenA.address === payToken.id && p.tokenB.address === receiveToken.id) ||
+    (p.tokenA.address === receiveToken.id && p.tokenB.address === payToken.id)
+  );
+  
+  if (!pool) return null;
+  
+  const isReversed = pool.tokenA.address === receiveToken.id;
+  const rate = isReversed ? 1 / pool.ratio : pool.ratio;
+  const amountOut = parseFloat(payAmount) * rate;
+  
+  return {
+    fromToken: payToken.id,
+    toToken: receiveToken.id,
+    fromTokenAmount: payAmount,
+    toTokenAmount: amountOut.toString(),
+    toTokenDecimals: receiveToken.decimals,
+    tx: {
+      to: pool.poolAddress,
+      data: '0x',
+      value: '0',
+    },
+    spender: pool.poolAddress,
+  };
+};
 
 export const useQuoteMethods = () => {
   const walletController = useWallet();
@@ -41,6 +83,11 @@ export const useQuoteMethods = () => {
       payTokenId,
       receiveTokenId,
     }: validSlippageParams) => {
+      // MODIFIED: Skip slippage check for custom pools
+      if (isCustomPoolPair(payTokenId, receiveTokenId)) {
+        return { is_valid: true };
+      }
+      
       const p = {
         slippage: new BigNumber(slippage).div(100).toString(),
         chain_id: findChainByEnum(chain)!.serverId,
@@ -68,12 +115,12 @@ export const useQuoteMethods = () => {
     },
     [walletOpenapi]
   );
+  
   const postSwap = React.useCallback(
     async ({
       payToken,
       receiveToken,
       payAmount,
-      // receiveRawAmount,
       slippage,
       dexId,
       txId,
@@ -119,6 +166,11 @@ export const useQuoteMethods = () => {
       getDexQuoteParams,
       'payToken' | 'receiveToken' | 'payAmount' | 'chain' | 'dexId'
     >): Promise<[boolean, boolean]> => {
+      // MODIFIED: No approval needed for custom pools
+      if (isCustomPoolPair(payToken.id, receiveToken.id)) {
+        return [true, false];
+      }
+      
       const chainInfo = findChainByEnum(chain)!;
       if (
         payToken?.id === chainInfo.nativeTokenAddress ||
@@ -168,6 +220,11 @@ export const useQuoteMethods = () => {
       nonce: string;
       chainInfo: NonNullable<ReturnType<typeof findChainByEnum>>;
     }) => {
+      // MODIFIED: Zero gas for custom pools
+      if (isCustomPoolPair(payToken.id, receiveToken.id)) {
+        return 0;
+      }
+      
       if (isSwapWrapToken(payToken.id, receiveToken.id, chain)) {
         const data = await walletOpenapi.estimateGasUsd({
           tx: {
@@ -210,7 +267,7 @@ export const useQuoteMethods = () => {
       quote?: QuoteResult;
       nonce?: string;
       chain: CHAINS_ENUM;
-      chainInfo: NonNullable<ReturnType<typeof findChainByEnum>>;
+      chainInfo: Nonnullable<ReturnType<typeof findChainByEnum>>;
     }) => {
       const isLinea = chain === CHAINS_ENUM.LINEA;
       const cached = gasMarketTaskCache.current;
@@ -273,6 +330,19 @@ export const useQuoteMethods = () => {
       nonce: string;
       preFetched?: PreEstimatePrefetched;
     }) => {
+      // MODIFIED: Skip gas estimation for custom pools
+      if (isCustomPoolPair(payToken.id, receiveToken.id)) {
+        return {
+          shouldApproveToken: false,
+          shouldTwoStepApprove: false,
+          gasPrice: 0,
+          gasUsed: 0,
+          gasUsdValue: '0',
+          gasUsd: '$0',
+          isSdkPass: true,
+        };
+      }
+      
       const chainInfo = findChainByEnum(chain)!;
 
       const [
@@ -323,7 +393,6 @@ export const useQuoteMethods = () => {
           lastTimeGas?.lastTimeSelect === 'gasPrice' &&
           lastTimeGas.gasPrice
         ) {
-          // use cached gasPrice if exist
           gasPrice = lastTimeGas.gasPrice;
         } else if (
           lastTimeGas?.lastTimeSelect &&
@@ -339,7 +408,6 @@ export const useQuoteMethods = () => {
               gasMarket.find((item) => item.level === 'normal')?.price || 0;
           }
         } else {
-          // no cache, use the fast level in gasMarket
           gasPrice =
             gasMarket.find((item) => item.level === 'normal')?.price || 0;
         }
@@ -393,6 +461,27 @@ export const useQuoteMethods = () => {
         recommendNonceTask?: Promise<string>;
       };
     }): Promise<TDexQuoteData> => {
+      // MODIFIED: Return custom pool quote immediately
+      const customQuote = getCustomPoolQuote(payToken, receiveToken, payAmount, chain);
+      if (customQuote) {
+        const quote: TDexQuoteData = {
+          data: customQuote,
+          name: `Custom Pool (${payToken.symbol}/${receiveToken.symbol})`,
+          isDex: true,
+          preExecResult: {
+            shouldApproveToken: false,
+            shouldTwoStepApprove: false,
+            gasPrice: 0,
+            gasUsed: 0,
+            gasUsdValue: '0',
+            gasUsd: '$0',
+            isSdkPass: true,
+          },
+        };
+        setQuote?.(quote);
+        return quote;
+      }
+      
       const isOpenOcean = dexId === DEX_ENUM.OPENOCEAN;
       const chainInfo = findChainByEnum(chain)!;
       const recommendNonceTask = !inSufficient
@@ -645,6 +734,19 @@ export const useQuoteMethods = () => {
         });
       }
 
+      // MODIFIED: Check for custom pool first
+      if (isCustomPoolPair(params.payToken.id, params.receiveToken.id)) {
+        const customQuote = await getDexQuote({
+          ...params,
+          dexId: DEX_ENUM.WRAPTOKEN,
+          sharedTasks: {
+            preFetched: sharedPreFetched,
+            recommendNonceTask: sharedRecommendNonceTask || undefined,
+          },
+        });
+        return [customQuote];
+      }
+
       if (
         isSwapWrapToken(
           params.payToken.id,
@@ -730,7 +832,6 @@ export interface postSwapParams {
   payToken: TokenItem;
   receiveToken: TokenItem;
   payAmount: string;
-  // receiveRawAmount: string;
   slippage: string;
   dexId: string;
   txId: string;
@@ -781,7 +882,6 @@ interface getPreExecResultParams
 export type QuotePreExecResultInfo = {
   shouldApproveToken: boolean;
   shouldTwoStepApprove: boolean;
-  // swapPreExecTx: ExplainTxResponse;
   gasPrice: number;
   gasUsed: number;
   gasUsd: string;

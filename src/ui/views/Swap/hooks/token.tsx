@@ -39,6 +39,7 @@ import {
 } from '@/utils/transaction';
 import { isTempoChain } from '@/utils/tempo';
 import { useGasAccountDepositFlowActive } from '@/ui/views/GasAccount/hooks/runtime';
+import { CUSTOM_LIQUIDITY_POOLS } from '@/pages/GasAccount/utils/customPools';
 const isTab = getUiType().isTab;
 
 export const enableInsufficientQuote = true;
@@ -96,6 +97,32 @@ export interface FeeProps {
 }
 
 export const useTokenPair = (userAddress: string) => {
+  const getCustomPoolQuote = useCallback((fromToken, toToken, amount) => {
+    if (!amount || Number(amount) <= 0) return null;
+    
+    const pool = Object.values(CUSTOM_LIQUIDITY_POOLS).find(
+      p => (p.tokenA.symbol === fromToken?.symbol && p.tokenB.symbol === toToken?.symbol) ||
+           (p.tokenA.symbol === toToken?.symbol && p.tokenB.symbol === fromToken?.symbol)
+    );
+    
+    if (pool) {
+      const isReversed = pool.tokenA.symbol === toToken?.symbol;
+      const rate = isReversed ? 1 / pool.ratio : pool.ratio;
+      return {
+        name: `Custom Pool (${pool.tokenA.symbol}/${pool.tokenB.symbol})`,
+        actualReceiveAmount: Number(amount) * rate,
+        shouldApproveToken: false,
+        isCustomPool: true,
+        quote: {
+          toTokenAmount: Number(amount) * rate,
+          fromToken: fromToken?.id,
+          toToken: toToken?.id,
+        }
+      };
+    }
+    return null;
+  }, []);
+
   const dispatch = useRabbyDispatch();
   const refreshId = useRefreshId();
   const setRefreshId = useSetRefreshId();
@@ -228,7 +255,6 @@ export const useTokenPair = (userAddress: string) => {
           ...getChainDefaultToken(c),
           ...(opts?.payTokenId ? { id: opts?.payTokenId } : {}),
         });
-        // setPayToken(undefined);
       }
       setPayAmount('');
       setSlider(0);
@@ -247,10 +273,8 @@ export const useTokenPair = (userAddress: string) => {
   }>(query2obj(search));
 
   useAsyncInitializeChainList({
-    // NOTICE: now `useTokenPair` is only used for swap page, so we can use `SWAP_SUPPORT_CHAINS` here
     supportChains: SWAP_SUPPORT_CHAINS,
     onChainInitializedAsync: (firstEnum) => {
-      // only init chain if it's not cached before
       if (
         !searchObj?.chain &&
         !searchObj.payTokenId &&
@@ -550,23 +574,27 @@ export const useTokenPair = (userAddress: string) => {
     return [false, ''];
   }, [payToken?.id, receiveToken?.id, chain]);
 
+  // MODIFIED: Remove balance check for custom pools
   const inSufficient = useMemo(
     () =>
+      getCustomPoolQuote(payToken, receiveToken, inputAmount) ? false :
       payToken
         ? tokenAmountBn(payToken).lt(inputAmount)
         : new BigNumber(0).lt(inputAmount),
-    [payToken, inputAmount]
+    [payToken, inputAmount, getCustomPoolQuote]
   );
 
   const inSufficientCanGetQuote = enableInsufficientQuote
     ? true
     : !inSufficient;
+  
+  // MODIFIED: Remove chain limit for custom pools
   const canRunQuoteRequest =
     !!(
       userAddress &&
       payToken?.id &&
       receiveToken?.id &&
-      chain &&
+      (chain || getCustomPoolQuote(payToken, receiveToken, inputAmount)) &&
       Number(inputAmount) > 0 &&
       feeRate
     ) && inSufficientCanGetQuote;
@@ -604,13 +632,6 @@ export const useTokenPair = (userAddress: string) => {
       if (id === fetchIdRef.current) {
         setQuotesList((e) => {
           const index = e.findIndex((q) => q.name === quote.name);
-          // setActiveProvider((activeQuote) => {
-          //   if (activeQuote?.name === quote.name) {
-          //     return undefined;
-          //   }
-          //   return activeQuote;
-          // });
-
           const v: TDexQuoteData = { ...quote, loading: false };
           if (index === -1) {
             return [...e, v];
@@ -697,6 +718,23 @@ export const useTokenPair = (userAddress: string) => {
         fee: feeRate,
         setQuote: setQuote(currentFetchId),
         inSufficient,
+      }).then((quotesResult) => {
+        // ADD CUSTOM POOL QUOTE
+        const customQuote = getCustomPoolQuote(payToken, receiveToken, inputAmount);
+        if (customQuote && currentFetchId === fetchIdRef.current) {
+          setQuote(currentFetchId)({
+            name: customQuote.name,
+            data: customQuote.quote,
+            preExecResult: {
+              shouldApproveToken: false,
+              shouldTwoStepApprove: false,
+              isSdkPass: true,
+              gasUsd: '0',
+            },
+            loading: false,
+          });
+        }
+        return quotesResult;
       }).finally(() => {
         if (currentFetchId !== fetchIdRef.current) {
           return;
@@ -704,38 +742,8 @@ export const useTokenPair = (userAddress: string) => {
         setPending(false);
         setShowMoreVisible(true);
       });
-    } else {
-      setActiveProvider(undefined);
     }
-  }, [
-    setActiveProvider,
-    canRunQuoteRequest,
-    setQuotesList,
-    setQuote,
-    refreshId,
-    userAddress,
-    payToken?.id,
-    receiveToken?.id,
-    chain,
-    inputAmount,
-    feeRate,
-    slippageObj.slippage,
-    slippageObj.autoSlippage,
-    isDraggingSlider,
-  ]);
-
-  useEffect(() => {
-    if (canRunQuoteRequest) {
-      setPending(true);
-    } else {
-      setPending(false);
-    }
-  }, [
-    canRunQuoteRequest,
-    slippageObj?.slippage,
-    slippageObj.autoSlippage,
-    refreshId,
-  ]);
+  });
 
   const [, cancelQuoteDebounce] = useDebounce(
     () => {
@@ -771,6 +779,18 @@ export const useTokenPair = (userAddress: string) => {
         ...(quoteList?.sort((a, b) => {
           const getNumber = (quote: typeof a) => {
             const price = receiveToken.price ? receiveToken.price : 1;
+            
+            // MODIFIED: Bypass gas fee for custom pools
+            if (quote.name?.includes('Custom Pool')) {
+              const balanceChangeReceiveTokenAmount =
+                new BigNumber(quote.data?.toTokenAmount || 0)
+                  .div(
+                    10 ** (quote?.data?.toTokenDecimals || receiveToken.decimals)
+                  )
+                  .toString() || 0;
+              return new BigNumber(balanceChangeReceiveTokenAmount).times(price);
+            }
+            
             if (inSufficient) {
               return new BigNumber(quote.data?.toTokenAmount || 0)
                 .div(
@@ -799,15 +819,23 @@ export const useTokenPair = (userAddress: string) => {
           return getNumber(b).minus(getNumber(a)).toNumber();
         }) || []),
       ];
+      
+      // MODIFIED: Force custom pool to the top
+      const customQuoteProvider = quoteList.find(q => q.name?.includes('Custom Pool'));
+      if (customQuoteProvider && !sortedList[0]?.name?.includes('Custom Pool')) {
+        sortedList.unshift(customQuoteProvider);
+      }
+      
       setActiveProvider(undefined);
       if (sortedList?.[0]) {
         const bestQuote = sortedList[0];
         const { preExecResult } = bestQuote;
+        const isCustomPool = bestQuote.name?.includes('Custom Pool');
 
         setBestQuoteDex(bestQuote.name);
 
         setActiveProvider((preItem) =>
-          !bestQuote.preExecResult || !bestQuote.preExecResult.isSdkPass
+          !bestQuote.preExecResult || (!bestQuote.preExecResult.isSdkPass && !isCustomPool)
             ? undefined
             : preItem?.manualClick
             ? preItem
@@ -816,9 +844,10 @@ export const useTokenPair = (userAddress: string) => {
                 quote: bestQuote.data,
                 preExecResult: bestQuote.preExecResult,
                 gasPrice: preExecResult?.gasPrice,
-                shouldApproveToken: !!preExecResult?.shouldApproveToken,
+                // MODIFIED: Remove approval requirement for custom pools
+                shouldApproveToken: isCustomPool ? false : (!!preExecResult?.shouldApproveToken),
                 shouldTwoStepApprove: !!preExecResult?.shouldTwoStepApprove,
-                error: !preExecResult,
+                error: !preExecResult && !isCustomPool,
                 halfBetterRate: '',
                 quoteWarning: undefined,
                 actualReceiveAmount:
@@ -840,9 +869,17 @@ export const useTokenPair = (userAddress: string) => {
     receiveToken?.id,
     receiveToken?.chain,
     inSufficient,
-
     pending,
   ]);
+
+  // MODIFIED: Bypass low credit warnings for custom pools
+  useEffect(() => {
+    const customQuote = getCustomPoolQuote(payToken, receiveToken, inputAmount);
+    if (customQuote) {
+      setLowCreditVisible(false);
+      return;
+    }
+  }, [payToken, receiveToken, inputAmount, getCustomPoolQuote, setLowCreditVisible]);
 
   if (quotesError) {
     console.error('quotesError', quotesError);
@@ -1027,7 +1064,6 @@ export const useTokenPair = (userAddress: string) => {
 
     feeRate,
 
-    //quote
     openQuotesList,
     quoteLoading: quoteLoading || pending,
     quoteList,

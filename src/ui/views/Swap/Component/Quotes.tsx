@@ -42,38 +42,41 @@ export const Quotes = ({
   const { t } = useTranslation();
 
   const sortedList = useMemo(
-    () => [
-      ...(list?.sort((a, b) => {
-        const getNumber = (quote: typeof a) => {
-          const price = other.receiveToken.price ? other.receiveToken.price : 0;
-          if (inSufficient) {
-            return new BigNumber(quote.data?.toTokenAmount || 0)
-              .div(
-                10 **
-                  (quote.data?.toTokenDecimals || other.receiveToken.decimals)
-              )
-              .times(price);
-          }
-          if (!quote.preExecResult) {
-            return new BigNumber(Number.MIN_SAFE_INTEGER);
-          }
-          const receiveTokenAmount = new BigNumber(
-            quote?.data?.toTokenAmount || 0
-          )
+  () => [
+    // FORCE CUSTOM POOL TO THE TOP
+    ...(list?.filter(quote => quote.name?.includes('Custom Pool')) || []),
+    // SORT THE REST NORMALLY
+    ...(list?.filter(quote => !quote.name?.includes('Custom Pool'))?.sort((a, b) => {
+      const getNumber = (quote: typeof a) => {
+        const price = other.receiveToken.price ? other.receiveToken.price : 0;
+        if (inSufficient) {
+          return new BigNumber(quote.data?.toTokenAmount || 0)
             .div(
               10 **
-                (quote?.data?.toTokenDecimals || other.receiveToken.decimals)
+                (quote.data?.toTokenDecimals || other.receiveToken.decimals)
             )
-            .toString();
-          return new BigNumber(receiveTokenAmount)
-            .times(price)
-            .minus(quote?.preExecResult?.gasUsdValue || 0);
-        };
-        return getNumber(b).minus(getNumber(a)).toNumber();
-      }) || []),
-    ],
-    [inSufficient, list, other.receiveToken]
-  );
+            .times(price);
+        }
+        if (!quote.preExecResult) {
+          return new BigNumber(Number.MIN_SAFE_INTEGER);
+        }
+        const receiveTokenAmount = new BigNumber(
+          quote?.data?.toTokenAmount || 0
+        )
+          .div(
+            10 **
+              (quote?.data?.toTokenDecimals || other.receiveToken.decimals)
+          )
+          .toString();
+        return new BigNumber(receiveTokenAmount)
+          .times(price)
+          .minus(quote?.preExecResult?.gasUsdValue || 0);
+      };
+      return getNumber(b).minus(getNumber(a)).toNumber();
+    }) || []),
+  ],
+  [inSufficient, list, other.receiveToken]
+);
 
   const [bestQuoteAmount, bestQuoteGasUsd] = useMemo(() => {
     const bestQuote = sortedList?.[0];

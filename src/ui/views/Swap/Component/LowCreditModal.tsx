@@ -10,6 +10,15 @@ import clsx from 'clsx';
 import { openInTab, useWallet } from '@/ui/utils';
 import { getAddressScanLink } from '@/utils';
 import { findChainByServerID } from '@/utils/chain';
+import { CUSTOM_LIQUIDITY_POOLS } from '@/pages/GasAccount/utils/customPools';
+
+// Helper to check if token is from custom pool
+const isCustomPoolToken = (token?: TokenItem): boolean => {
+  if (!token?.id) return false;
+  return Object.values(CUSTOM_LIQUIDITY_POOLS).some(pool => 
+    pool.tokenA.address === token.id || pool.tokenB.address === token.id
+  );
+};
 
 export const useLowCreditState = (toToken?: TokenItem) => {
   const wallet = useWallet();
@@ -17,6 +26,12 @@ export const useLowCreditState = (toToken?: TokenItem) => {
   const [lowCreditVisible, setLowCreditVisible] = useState(false);
 
   useEffect(() => {
+    // MODIFIED: Skip low credit check for custom pool tokens
+    if (isCustomPoolToken(toToken)) {
+      setLowCreditVisible(false);
+      return;
+    }
+    
     wallet
       .getPageStateCache()
       .then((cache) => {
@@ -28,7 +43,7 @@ export const useLowCreditState = (toToken?: TokenItem) => {
       .finally(() => {
         wallet.clearPageStateCache();
       });
-  }, []);
+  }, [toToken]);
 
   return {
     lowCreditToken,
@@ -52,6 +67,11 @@ export const LowCreditModal = ({
 }) => {
   const { t } = useTranslation();
   const wallet = useWallet();
+
+  // MODIFIED: Don't show modal for custom pool tokens
+  if (isCustomPoolToken(token)) {
+    return null;
+  }
 
   const openTokenAddress = () => {
     if (token) {
@@ -98,7 +118,7 @@ export const LowCreditModal = ({
             height="40px"
             chainSize={16}
           />
-        </div>
+        }
         <div className="mt-8 mb-4 text-18 font-medium text-r-neutral-title-1 text-center">
           {getTokenSymbol(token)}
         </div>

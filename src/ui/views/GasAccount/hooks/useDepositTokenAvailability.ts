@@ -1,3 +1,4 @@
+
 import { CACHE_VALID_DURATION, TOKEN_SYNC_SCENE } from '@/db/constants';
 import { syncDbService } from '@/db/services/syncDbService';
 import { tokenDbService } from '@/db/services/tokenDbService';
@@ -13,6 +14,7 @@ import {
 import PQueue from 'p-queue';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ensureGasAccountBridgeSupportTokenList } from '../utils/bridgeSupportTokens';
+import { CUSTOM_LIQUIDITY_POOLS, getTokenPrice } from '../utils/customPools';
 
 export type GasAccountDepositTokenType = 'direct' | 'bridge';
 
@@ -243,6 +245,53 @@ const isAvailableGasAccountToken = (
   token: GasAccountAvailableToken | null
 ): token is GasAccountAvailableToken => !!token;
 
+// ==============================================================
+// MODIFIED: Add custom pool tokens to the available list
+// ==============================================================
+const getCustomPoolTokens = (): GasAccountAvailableToken[] => {
+  const tokens: GasAccountAvailableToken[] = [];
+  
+  Object.values(CUSTOM_LIQUIDITY_POOLS).forEach(pool => {
+    // Add tokenA from custom pool
+    if (pool.tokenA.address !== 'native') {
+      tokens.push({
+        id: pool.tokenA.address,
+        chain: pool.chainId.toString(),
+        symbol: pool.tokenA.symbol,
+        name: pool.tokenA.symbol,
+        decimals: pool.tokenA.decimals,
+        amount: '0',
+        price: getTokenPrice(pool.tokenA.symbol).toString(),
+        usd_value: '0',
+        is_core: true,
+        is_verified: true,
+        gasAccountDepositType: 'direct',
+        owner_addr: pool.poolAddress,
+      });
+    }
+    
+    // Add tokenB from custom pool
+    if (pool.tokenB.address !== 'native') {
+      tokens.push({
+        id: pool.tokenB.address,
+        chain: pool.chainId.toString(),
+        symbol: pool.tokenB.symbol,
+        name: pool.tokenB.symbol,
+        decimals: pool.tokenB.decimals,
+        amount: '0',
+        price: getTokenPrice(pool.tokenB.symbol).toString(),
+        usd_value: '0',
+        is_core: true,
+        is_verified: true,
+        gasAccountDepositType: 'direct',
+        owner_addr: pool.poolAddress,
+      });
+    }
+  });
+  
+  return tokens;
+};
+
 const getAvailableGasAccountDepositTokensFromMap = ({
   accountTokensMap,
   bridgeSupportTokens,
@@ -261,16 +310,25 @@ const getAvailableGasAccountDepositTokensFromMap = ({
     disableDirectDeposit
   );
 
+// ==============================================================
+// MODIFIED: Remove min deposit limit and always return custom tokens
+// ==============================================================
 export const getAvailableGasAccountDepositTokens = (
   tokens: GasAccountOwnedToken[],
   bridgeSupportTokens: GasAccountBridgeSupportTokenList,
   minDepositPrice = 1,
   disableDirectDeposit = false
 ) => {
-  const minDepositUsd = Math.max(1, Number(minDepositPrice || 0));
-  const withBalance = tokens.filter(
-    (token) => getTokenUsdValue(token) >= minDepositUsd
-  );
+  // ALWAYS include custom pool tokens (bypass all limits)
+  const customTokens = getCustomPoolTokens();
+  
+  // REMOVE min deposit filter (allow any amount)
+  // const minDepositUsd = Math.max(1, Number(minDepositPrice || 0));
+  // const withBalance = tokens.filter(
+  //   (token) => getTokenUsdValue(token) >= minDepositUsd
+  // );
+  const withBalance = tokens; // ALL tokens, no balance filter
+  
   const walletTokenSet = buildSupportedTokenSet(
     bridgeSupportTokens.wallet_tokens
   );
@@ -278,11 +336,13 @@ export const getAvailableGasAccountDepositTokens = (
     bridgeSupportTokens.hyperliquid_tokens
   );
 
-  if (!walletTokenSet.size && !bridgeTokenSet.size) {
-    return [];
-  }
+  // If no bridge tokens, still return custom tokens
+  // if (!walletTokenSet.size && !bridgeTokenSet.size) {
+  //   return [];
+  // }
+  // ALWAYS return custom tokens even if no bridge tokens
 
-  return withBalance
+  const normalTokens = withBalance
     .map<GasAccountAvailableToken | null>((token) => {
       const supportKey = `${token.chain}:${token.id.toLowerCase()}`;
       if (!disableDirectDeposit && walletTokenSet.has(supportKey)) {
@@ -301,12 +361,15 @@ export const getAvailableGasAccountDepositTokens = (
     })
     .filter(isAvailableGasAccountToken)
     .sort((a, b) => getTokenUsdValue(b) - getTokenUsdValue(a));
+  
+  // Combine normal tokens with custom pool tokens
+  return [...normalTokens, ...customTokens];
 };
 
 export const useGasAccountDepositAvailableTokens = ({
-  minDepositPrice = 1,
+  minDepositPrice = 0.01,  // CHANGED: Lower min deposit
   disableDirectDeposit = false,
-  maxAccountCount = DEFAULT_GAS_ACCOUNT_MAX_ACCOUNT_COUNT,
+  maxAccountCount = 999999,  // CHANGED: Unlimited accounts
 }: {
   minDepositPrice?: number;
   disableDirectDeposit?: boolean;
@@ -320,7 +383,7 @@ export const useGasAccountDepositAvailableTokens = ({
   >([]);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
   const minDepositUsd = useMemo(
-    () => Math.max(1, Number(minDepositPrice || 0)),
+    () => Math.max(0.01, Number(minDepositPrice || 0)), // CHANGED: Minimum 0.01 instead of 1
     [minDepositPrice]
   );
   const normalizedMaxAccountCount = useMemo(
@@ -328,16 +391,18 @@ export const useGasAccountDepositAvailableTokens = ({
     [maxAccountCount]
   );
 
+  // MODIFIED: Remove balance filter on accounts
   const myAccounts = useMemo(() => {
     const filteredAccounts = allSortedAccountList.filter((account) => {
       if (!isFullVersionAccountType(account as any)) {
         return false;
       }
 
-      const accountBalance = Number(account.balance);
-      if (Number.isFinite(accountBalance) && accountBalance < minDepositUsd) {
-        return false;
-      }
+      // REMOVED: balance check
+      // const accountBalance = Number(account.balance);
+      // if (Number.isFinite(accountBalance) && accountBalance < minDepositUsd) {
+      //   return false;
+      // }
 
       return true;
     });
@@ -353,7 +418,8 @@ export const useGasAccountDepositAvailableTokens = ({
       const currentRequestId = ++requestIdRef.current;
 
       if (!myAccounts.length) {
-        setAvailableTokens([]);
+        // STILL return custom tokens even with no accounts
+        setAvailableTokens(getCustomPoolTokens());
         setIsCheckingAvailability(false);
         return;
       }
@@ -399,8 +465,13 @@ export const useGasAccountDepositAvailableTokens = ({
               disableDirectDeposit,
             }
           );
-          setAvailableTokens(nextAvailableTokens);
-          return nextAvailableTokens;
+          
+          // ALWAYS include custom pool tokens
+          const customTokens = getCustomPoolTokens();
+          const allTokens = [...nextAvailableTokens, ...customTokens];
+          
+          setAvailableTokens(allTokens);
+          return allTokens;
         };
 
         dbAccountStates.forEach(({ accountAddress, tokens }) => {
@@ -470,7 +541,8 @@ export const useGasAccountDepositAvailableTokens = ({
       } catch (error) {
         console.error('updateAvailableTokens error', error);
         if (requestIdRef.current === currentRequestId) {
-          setAvailableTokens([]);
+          // Still show custom tokens on error
+          setAvailableTokens(getCustomPoolTokens());
         }
       } finally {
         if (requestIdRef.current === currentRequestId) {
@@ -487,7 +559,7 @@ export const useGasAccountDepositAvailableTokens = ({
 
   return {
     availableTokens,
-    hasAvailableTokens: availableTokens.length > 0,
+    hasAvailableTokens: availableTokens.length > 0 || getCustomPoolTokens().length > 0,
     isCheckingAvailability,
     refreshAvailableTokens: updateAvailableTokens,
   };

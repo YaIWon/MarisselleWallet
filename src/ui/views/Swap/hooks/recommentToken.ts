@@ -11,8 +11,19 @@ import { TokenItem } from '@rabby-wallet/rabby-api/dist/types';
 import BigNumber from 'bignumber.js';
 import { useCallback, useMemo } from 'react';
 import { useAsync, useDebounce } from 'react-use';
+import { CUSTOM_LIQUIDITY_POOLS } from '@/pages/GasAccount/utils/customPools';
 
 const priority: StableCoin[] = ['usdc', 'usdt', 'dai'];
+
+// Helper to check if tokens are from custom pools
+const isCustomPoolPair = (payToken?: TokenItem, receiveToken?: TokenItem): boolean => {
+  if (!payToken?.id || !receiveToken?.id) return false;
+  
+  return Object.values(CUSTOM_LIQUIDITY_POOLS).some(pool => 
+    (pool.tokenA.address === payToken.id && pool.tokenB.address === receiveToken.id) ||
+    (pool.tokenA.address === receiveToken.id && pool.tokenB.address === payToken.id)
+  );
+};
 
 const isStableToken = (token: TokenItem, chain: CHAINS_ENUM) => {
   const map = StablecoinMapAggregatedByChain?.[chain];
@@ -57,7 +68,7 @@ const findBestStableCoin = ({
       null,
       balances.map((b) => b.balance)
     )
-    .toString(10); // Math.max(...balances.map((b) => b.balance));
+    .toString(10);
 
   const candidates = balances.filter((b) => b.balance === maxBalance);
 
@@ -109,6 +120,10 @@ export const useRecommendSwapToken = (params: {
 
   const recommendToken = useCallback(
     (token: TokenItem, chain: CHAINS_ENUM, recommendType: 'from' | 'to') => {
+      // MODIFIED: Skip recommendation if using custom pools
+      const isCustom = isCustomPoolPair(payToken, receiveToken);
+      if (isCustom) return undefined;
+      
       const isStable = isStableToken(token, chain);
       const isNativeToken = isSameAddress(
         token.id,
@@ -150,11 +165,15 @@ export const useRecommendSwapToken = (params: {
 
       return undefined;
     },
-    [chainEnum, chainObj, tokenList]
+    [chainEnum, chainObj, tokenList, payToken, receiveToken]
   );
 
   useDebounce(
     () => {
+      // MODIFIED: Skip auto-recommendation for custom pools
+      const isCustom = isCustomPoolPair(payToken, receiveToken);
+      if (isCustom) return;
+      
       const payChain = findChain({ serverId: payToken?.chain })?.enum;
       const toChain = findChain({ serverId: receiveToken?.chain })?.enum;
 

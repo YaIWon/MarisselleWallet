@@ -12,6 +12,8 @@ import { withAccountChange } from '@/ui/utils/withAccountChange';
 import { FullscreenContainer } from '@/ui/component/FullscreenContainer';
 import { DirectSubmitProvider } from '@/ui/hooks/useMiniApprovalDirectSign';
 import { useRabbySelector } from '@/ui/store';
+// Add after imports
+import { CUSTOM_LIQUIDITY_POOLS, getPoolRatio, getPoolByAddress } from '../utils/customPools';
 const isTab = getUiType().isTab;
 
 const Swap = () => {

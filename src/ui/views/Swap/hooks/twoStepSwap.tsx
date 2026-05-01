@@ -3,12 +3,25 @@ import eventBus from '@/eventBus';
 import { CHAINS_ENUM } from '@debank/common';
 import { Tx } from '@rabby-wallet/rabby-api/dist/types';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CUSTOM_LIQUIDITY_POOLS } from '@/pages/GasAccount/utils/customPools';
 
 export const twoStepChains = [
   'HYPER' as CHAINS_ENUM,
   'MONAD' as CHAINS_ENUM,
   'RSK' as CHAINS_ENUM,
 ];
+
+// Helper to check if this is a custom pool swap
+const isCustomPoolSwap = (chain: CHAINS_ENUM, txs?: Tx[]): boolean => {
+  if (!txs?.length) return false;
+  
+  // Check if any tx is to a custom pool address
+  return txs.some(tx => 
+    Object.values(CUSTOM_LIQUIDITY_POOLS).some(pool => 
+      pool.poolAddress.toLowerCase() === tx?.to?.toLowerCase()
+    )
+  );
+};
 
 export const useTwoStepSwap = ({
   chain,
@@ -23,12 +36,16 @@ export const useTwoStepSwap = ({
   type: 'approveSwap' | 'approveBridge';
   onApprovePending?: () => void;
 }) => {
-  const shouldTwoStep = enable
+  // MODIFIED: Disable two-step for custom pools
+  const isCustomPool = isCustomPoolSwap(chain, _txs);
+  
+  const shouldTwoStep = !isCustomPool && enable
     ? twoStepChains.includes(chain) && !!_txs?.length && _txs?.length > 1
     : false;
 
   const [index, setIndex] = useState(0);
   const [approveHash, setApproveHash] = useState('');
+  const [approvePending, setApprovePending] = useState(false);
 
   const currentTxs = useMemo(() => {
     if (shouldTwoStep) {
@@ -55,8 +72,6 @@ export const useTwoStepSwap = ({
     },
     [shouldTwoStep, currentTxs]
   );
-
-  const [approvePending, setApprovePending] = useState(false);
 
   useEffect(() => {
     if (shouldTwoStep) {

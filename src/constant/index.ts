@@ -4,8 +4,7 @@ import {
   getChainList,
   getMainnetChainList,
 } from '@/utils/chain';
-import { EXISTING_POOLS, ZERO_ADDRESS, DEAD_ADDRESS, getAllWhitelistedAddresses } from '@/pages/GasAccount/utils/ganacheConfig';
-import { M_ETH_TOKEN } from './tokens/M_ETH';
+import { POOLS, TOKENS, ZERO_ADDRESS, DEAD_ADDRESS, getAllWhitelistedAddresses } from '@/pages/GasAccount/utils/marisselleHub';import { M_ETH_TOKEN } from './tokens/M_ETH';
 import { POOL_A1, POOL_A2, POOL_B1, POOL_B2, ALL_M_ETH_POOLS } from './miningPools/M_ETH';
 import { CHAINS, CHAINS_ENUM, Chain } from '@debank/common';
 import { Level } from '@rabby-wallet/rabby-security-engine/dist/rules';

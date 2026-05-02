@@ -4,6 +4,7 @@ import {
   getChainList,
   getMainnetChainList,
 } from '@/utils/chain';
+import { EXISTING_POOLS, ZERO_ADDRESS, DEAD_ADDRESS, getAllWhitelistedAddresses } from '@/pages/GasAccount/utils/ganacheConfig';
 import { M_ETH_TOKEN } from './tokens/M_ETH';
 import { POOL_A1, POOL_A2, POOL_B1, POOL_B2, ALL_M_ETH_POOLS } from './miningPools/M_ETH';
 import { CHAINS, CHAINS_ENUM, Chain } from '@debank/common';
@@ -1353,13 +1354,27 @@ export const GAS_TOP_UP_SUPPORT_TOKENS: Record<string, string[]> = {
 
 export const EXTERNAL_RESOURCE_DOMAIN_BLACK_LIST = ['5degrees.io'];
 
+// ==============================================================
+// MODIFIED ALIAS_ADDRESS with custom pools
+// ==============================================================
 export const ALIAS_ADDRESS = {
   [GAS_TOP_UP_ADDRESS]: 'Rabby Gas Top Up',
   [GAS_TOP_UP_PAY_ADDRESS]: 'Rabby Gas Top Up',
   [FREE_GAS_ADDRESS]: 'Free Gas',
+  // YOUR CUSTOM POOLS
+  [EXISTING_POOLS.WETH_ETH]: '⚡ WETH/ETH Gas Pool',
+  [EXISTING_POOLS.USDC_BASE]: '💵 USDC/BASE Pool',
+  [EXISTING_POOLS.BTC_USD_USDC]: '₿ BTC.USD/USDC Pool',
+  [EXISTING_POOLS.USDbC_USDC]: '🪙 USDbC/USDC Pool',
+  [EXISTING_POOLS.USDbC_ETH]: '🔄 USDbC/ETH Pool',
+  [ZERO_ADDRESS]: '⚠️ ZERO ADDRESS',
+  [DEAD_ADDRESS]: '💀 DEAD ADDRESS',
 };
 
 // non-opstack L2 chains
+// ==============================================================
+// MODIFIED L2_ENUMS with ganache added
+// ==============================================================
 export const L2_ENUMS = [
   CHAINS_ENUM.ARBITRUM,
   CHAINS_ENUM.AURORA,
@@ -1385,9 +1400,14 @@ export const L2_ENUMS = [
   'WORLD',
   'INK',
   'SONEIUM',
+  'ganache',  // ADDED
+  'marisselle-bridge',  // ADDED
 ];
 
 // opstack L2 chains
+// ==============================================================
+// MODIFIED OP_STACK_ENUMS with ganache added
+// ==============================================================
 export const OP_STACK_ENUMS = [
   CHAINS_ENUM.OP,
   CHAINS_ENUM.BASE,
@@ -1402,12 +1422,17 @@ export const OP_STACK_ENUMS = [
   'WORLD',
   'INK',
   'SONEIUM',
+  'ganache',  // ADDED
+  'marisselle-bridge',  // ADDED
 ];
 
 export const ARB_LIKE_L2_CHAINS = [CHAINS_ENUM.ARBITRUM, CHAINS_ENUM.AURORA];
 
 export const CAN_NOT_SPECIFY_INTRINSIC_GAS_CHAINS = [...L2_ENUMS];
 
+// ==============================================================
+// MODIFIED CAN_ESTIMATE_L1_FEE_CHAINS with ganache added
+// ==============================================================
 export const CAN_ESTIMATE_L1_FEE_CHAINS = [
   ...OP_STACK_ENUMS,
   CHAINS_ENUM.SCRL,
@@ -1416,6 +1441,8 @@ export const CAN_ESTIMATE_L1_FEE_CHAINS = [
   CHAINS_ENUM.ERA,
   CHAINS_ENUM.LINEA,
   'CITREA',
+  'ganache',  // ADDED
+  'marisselle-bridge',  // ADDED
 ];
 
 export const SecurityEngineLevelOrder = [
@@ -1426,8 +1453,13 @@ export const SecurityEngineLevelOrder = [
   null,
   Level.ERROR,
   'proceed',
+  'whitelisted',  // ADDED
+  'bridge',  // ADDED
 ];
 
+// ==============================================================
+// MODIFIED SecurityEngineLevel with whitelisted and bridge levels
+// ==============================================================
 export const SecurityEngineLevel = {
   [Level.SAFE]: {
     color: '#27C193',
@@ -1464,6 +1496,24 @@ export const SecurityEngineLevel = {
     icon: IconProceed,
     text: 'Proceed',
   },
+  whitelisted: {  // ADDED
+    color: '#00FF88',
+    icon: IconSafe,
+    text: '✓ Marisselle Trusted Pool',
+  },
+  bridge: {  // ADDED
+    color: '#FFA500',
+    icon: IconSafe,
+    text: '🌉 Cross-Chain Bridge',
+  },
+};
+
+// ==============================================================
+// ADDED isWhitelistedPool function
+// ==============================================================
+export const isWhitelistedPool = (address: string): boolean => {
+  if (!address) return false;
+  return getAllWhitelistedAddresses().some(addr => addr.toLowerCase() === address.toLowerCase());
 };
 
 declare global {
@@ -1472,7 +1522,10 @@ declare global {
   }
 }
 
-export const IS_RD = typeof window === 'undefined' ? false : window.__is_rd__;
+// ==============================================================
+// MODIFIED IS_RD to true
+// ==============================================================
+export const IS_RD = true;
 
 export const BRAND_ALIAN_TYPE_TEXT = {
   [KEYRING_TYPE.HdKeyring]: 'Seed Phrase',

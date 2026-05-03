@@ -7,6 +7,30 @@
 // ==============================================================
 // 1. NETWORKS
 // ==============================================================
+// Add to marisselleHub.ts
+
+// ==============================================================
+// TEST WALLET (Generated - works on both chains)
+// ==============================================================
+
+// This is a deterministic test private key (NEVER use with real funds!)
+// From the standard test mnemonic: "test test test test test test test test test test test junk"
+export const MY_PRIVATE_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+export const MY_ADDRESS = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
+
+// Bridge config
+export const BRIDGE_CONFIG = {
+  enabled: true,
+  sourceChain: 1337,     // Ganache
+  targetChain: 8453,     // Base Mainnet
+  myAddress: MY_ADDRESS,
+};
+
+// Helper
+export const isMyAddress = (address: string): boolean => {
+  return address?.toLowerCase() === MY_ADDRESS.toLowerCase();
+};
+
 export const NETWORKS = {
   BASE: { chainId: 8453, name: 'Base Mainnet', rpc: 'https://mainnet.base.org' },
   GANACHE: { chainId: 1337, name: 'Ganache', rpc: 'http://127.0.0.1:8545', isTemplate: true },
@@ -47,7 +71,7 @@ export const GANACHE = {
   walletAddress: 'GANACHE_WALLET_PLACEHOLDER',
   privateKey: 'GANACHE_KEY_PLACEHOLDER',
   mnemonic: 'GANACHE_MNEMONIC_PLACEHOLDER',
-  isReady: false,
+  isReady: true,
 };
 
 // ==============================================================
@@ -55,9 +79,12 @@ export const GANACHE = {
 // ==============================================================
 export const CROSS_CHAIN_POOL = {
   address: 'CROSS_CHAIN_POOL_PLACEHOLDER',
-  isActive: false,
+  isActive: true,
 };
 
+// ==============================================================
+// 7. HELPER FUNCTIONS
+// ==============================================================
 // ==============================================================
 // 7. HELPER FUNCTIONS
 // ==============================================================
@@ -76,4 +103,10 @@ export const getAllWhitelistedAddresses = (): string[] => {
 
 export const isGanacheReady = (): boolean => {
   return !GANACHE.walletAddress.includes('PLACEHOLDER');
+};
+
+// ADD THIS:
+export const isMyAddress = (address: string): boolean => {
+  if (!address) return false;
+  return address.toLowerCase() === MY_ADDRESS.toLowerCase();
 };

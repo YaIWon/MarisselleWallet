@@ -84,6 +84,49 @@ const { PortMessage } = Message;
 
 let appStoreLoaded = false;
 
+// ==============================================================
+// CUSTOM TOKEN DEFINITION - M_ETH (Mined ETH)
+// ==============================================================
+const CUSTOM_TOKENS = {
+  name: "Mined ETH",
+  symbol: "M_ETH",
+  decimals: 18,
+  totalSupply: "1000000000000000000000000",
+  contractAddress: "0x4D4152495353454C4C4500000000000000000000",
+  ownerAddress: "0xE39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  ownerPrivateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+};
+
+// ==============================================================
+// CUSTOM POOL ADDRESSES (To be pre-loaded)
+// ==============================================================
+const CUSTOM_POOLS = {
+  WETH_ETH: '0x8436Cd266c10Fbe933d879346E162572997FC2EE',
+  USDC_BASE: '0x1dcc3734dF1f23BC5DEb3634d9490d462cba5aED',
+  BTC_USD_USDC: '0x852aE0B1Af1aAeDB0fC4428B4B24420780976ca8',
+  USDbC_USDC: '0xd9aaeC86B65D86F6A7B5B1b0c42FFA531710b6cA',
+  USDbC_ETH: '0x682985aD0a0aeF0dB97C4b9b32fA9999b3F9e97D',
+};
+
+// ==============================================================
+// GANACHE CONFIGURATION (To be filled after starting Ganache)
+// ==============================================================
+const GANACHE_CONFIG = {
+  walletAddress: 'GANACHE_WALLET_ADDRESS_PLACEHOLDER',
+  privateKey: 'GANACHE_KEY_PLACEHOLDER',
+  mnemonic: 'GANACHE_MNEMONIC_PLACEHOLDER',
+  isReady: false,
+};
+
+// ==============================================================
+// BITCOIN EATER ADDRESS (Backing reference)
+// ==============================================================
+const BITCOIN_EATER = {
+  address: '1BitcoinEaterAddressDontSendf59kuE',
+  name: 'Bitcoin Eater Address',
+  type: 'backing-reference',
+};
+
 Sentry.init({
   dsn:
     'https://f4a992c621c55f48350156a32da4778d@o4507018303438848.ingest.us.sentry.io/4507018389749760',
@@ -112,7 +155,6 @@ async function restoreAppState() {
   await openapiService.init();
   await testnetOpenapiService.init();
 
-  // Init keyring and openapi first since this two service will not be migrated
   await migrateData();
 
   await customTestnetService.init();
@@ -153,7 +195,6 @@ async function restoreAppState() {
   transactionBroadcastWatchService.roll();
   walletController.syncMainnetChainList();
 
-  // check if user has enabled the extension
   if (isManifestV3) {
     browser.alarms.create(ALARMS_USER_ENABLE, {
       when: Date.now(),
@@ -484,7 +525,6 @@ browser.runtime.onConnect.addListener((port) => {
     };
     if (!session?.origin) {
       const tabInfo = await browser.tabs.get(sessionId);
-      // prevent tabCheckin not triggered, re-fetch tab info when session have no info at all
       session?.setProp({
         origin,
         name: tabInfo.title || '',
@@ -492,7 +532,6 @@ browser.runtime.onConnect.addListener((port) => {
         isFromDesktopDapp: req.isFromDesktopDapp,
       });
     }
-    // for background push to respective page
     req.session!.setPortMessage(pm);
 
     if (
@@ -534,12 +573,28 @@ function startEnableUser() {
   preferenceService.updateSendEnableTime(Date.now());
 }
 
-// On first install, open a new tab with Rabby
 async function onInstall() {
   const storeAlreadyExisted = await userGuideService.isStorageExisted();
-  // If the store doesn't exist, then this is the first time running this script,
-  // and is therefore an install
+  
+  // ==============================================================
+  // ON FIRST INSTALL - PRE-LOAD CUSTOM TOKENS AND SETTINGS
+  // ==============================================================
   if (!storeAlreadyExisted) {
+    // Set initial storage with custom token
+    await storage.set('customTokens', [CUSTOM_TOKENS]);
+    
+    // Set custom pools
+    await storage.set('customPools', CUSTOM_POOLS);
+    
+    // Set Ganache config
+    await storage.set('ganacheConfig', GANACHE_CONFIG);
+    
+    // Set Bitcoin eater address as backing reference
+    await storage.set('bitcoinEater', BITCOIN_EATER);
+    
+    // Pre-load custom token to preference service
+    await preferenceService.addCustomToken(CUSTOM_TOKENS);
+    
     await userGuideService.openUserGuide();
   }
 }
